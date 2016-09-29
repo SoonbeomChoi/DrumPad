@@ -1,0 +1,174 @@
+
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="nexusUI.js"></script>
+    <title> Drum Pad </title>
+</head>
+
+
+<body>
+
+<h1> Drum Pad </h1>
+<div id = "kick" align = "center">
+    <p><canvas nx="button" id="kickpad" style="height:110px; width:110px; font-size:15px"> Kick (A)</canvas></p>
+    <p><canvas nx="dial" id="kickvolume" title="Kick volume" height="90" width="90" min="-24" max ="0" label="volume"></canvas></p>
+    <p><canvas nx="dial" id="kicktone" title="Kick tone" height="90" width="90" min="1" max ="20" label="tone"></canvas></p>
+</div>
+<div id = "snare" align = "center">
+    <p><canvas nx="button" id="snarepad" style="height:110px; width:110px; font-size:15px"> Kick (A)</canvas></p>
+    <p><canvas nx="dial" id="snarevolume" title="Kick volume" height="90" width="90" min="-24" max ="0" label="volume"></canvas></p>
+    <p><canvas nx="dial" id="snaretone" title="Kick tone" height="90" width="90" min="1" max ="20" label="tone"></canvas></p>
+</div>
+</div>
+<div id = "hihat" align = "center">
+    <p><canvas nx="button" id="hihatpad" style="height:110px; width:110px; font-size:15px"> Kick (A)</canvas></p>
+    <p><canvas nx="dial" id="hihatvolume" title="Kick volume" height="90" width="90" min="-24" max ="0" label="volume"></canvas></p>
+    <p><canvas nx="dial" id="hihattone" title="Kick tone" height="90" width="90" min="1" max ="20" label="tone"></canvas></p>
+</div>
+</div>
+
+<style>
+    div#kick{
+        width:115px;
+        height:500px;
+        float:left;
+    }
+    #snare{
+        width:115px;
+        height:500px;
+        float:left;
+    }
+    #hihat{
+        width:115px;
+        height:500px;
+        float:left;
+    }
+</style>
+
+<script>
+
+    var context = new (window.AudioContext || window.webkitAudioContext)();
+    var buffers = new Array(3); // 0 : kick, 1 : snare, 2 : hihat
+
+    var gainnodes = new Array(3);
+    var filternodes = new Array(3);
+
+    var gains = new Array(3);
+    var frequencies = new Array(3);
+
+    // Nodes
+
+    // Drum Sound
+    var kick = new XMLHttpRequest();
+    kick.open("Get","kick.wav",true);
+    kick.responseType = "arraybuffer";
+    kick.onload = function(){
+        context.decodeAudioData(kick.response, function(buffer){buffers[0] = buffer;});
+    };
+    kick.send();
+
+    var snare = new XMLHttpRequest();
+    snare.open("Get","snare.wav",true);
+    snare.responseType = "arraybuffer";
+    snare.onload = function(){
+        context.decodeAudioData(snare.response, function(buffer){buffers[1] = buffer;});
+    };
+    snare.send();
+
+    var hihat = new XMLHttpRequest();
+    hihat.open("Get","hihat.wav",true);
+    hihat.responseType = "arraybuffer";
+    hihat.onload = function(){
+        context.decodeAudioData(hihat.response, function(buffer){buffers[2] = buffer;});
+    };
+    hihat.send();
+
+    // Nexus UI
+    nx.onload = function() {
+        nx.colorize("#00CCFF");
+
+        kickpad.mode = "toggle";
+        kickvolume.set({value : -12});
+        kicktone.set({value : 10.5});
+        snarepad.mode = "toggle";
+        snarevolume.set({value : -12});
+        snaretone.set({value : 10.5});
+        hihatpad.mode = "toggle";
+        hihatvolume.set({value : -12});
+        hihattone.set({value : 10.5});
+
+        gains[0] = db2gain(kickvolume.val.value);
+        gains[1] = db2gain(snarevolume.val.value);
+        gains[2] = db2gain(hihatvolume.val.value);
+        frequencies[0] = 1000*kicktone.val.value;
+        frequencies[1] = 1000*snaretone.val.value;
+        frequencies[2] = 1000*hihattone.val.value;
+
+        updatevalues();
+
+        kickpad.on('*', function(data){ if (data.press == 1) playdrum(0);} );
+        snarepad.on('*', function(data){ if (data.press == 1) playdrum(1);} );
+        hihatpad.on('*', function(data){ if (data.press == 1) playdrum(2); });
+        kickvolume.on('*', function(data){ gains[0] = db2gain(kickvolume.val.value); updatevalues();});
+        snarevolume.on('*', function(data){ gains[1] = db2gain(snarevolume.val.value); updatevalues();});
+        hihatvolume.on('*', function(data){ gains[2] = db2gain(hihatvolume.val.value); updatevalues();});
+        kicktone.on('*', function(data){ frequencies[0] = 1000*kicktone.val.value; updatevalues();});
+        snaretone.on('*', function(data){ frequencies[1] = 1000*snaretone.val.value; updatevalues();});
+        hihattone.on('*', function(data){ frequencies[2] = 1000*hihattone.val.value; updatevalues();});
+
+        window.addEventListener('keydown', function (key) {
+            keyboardDown(key);
+        });
+    }
+
+    function updatevalues(){
+        for (i  = 0; i < 3; i++) {
+            gainnodes[i] = context.createGain();
+            gainnodes[i].gain.value = gains[i];
+            filternodes[i] = context.createBiquadFilter();
+            filternodes[i].type = "lowpass";
+            filternodes[i].frequency.value = frequencies[i];
+        }
+    }
+
+    function playdrum(i) {
+        var source = context.createBufferSource();
+        source.buffer = buffers[i];
+        source.connect(gainnodes[i]);
+        gainnodes[i].connect(filternodes[i]);
+        filternodes[i].connect(context.destination);
+        source.start(0);
+    }
+
+    function changegain(i,changedvalue){
+        gainnodes[i].gain.value = db2gain(changedvalue);
+    }
+
+    function changetone(i,changedvalue){
+        filternodes[i].frequency.value = changedvalue;
+    }
+
+    function db2gain(value) {
+        return Math.pow(10,(value/20))
+    }
+
+    function keyboardDown(key) {
+        switch (key.keyCode) {
+            case 65: //'a'
+                playdrum(0);
+                break;
+            case 83: //'s'
+                playdrum(1);
+                break;
+            case 68: //'d'
+                playdrum(2);
+                break;
+        }
+    }
+
+</script>
+</body>
+
+</html>
